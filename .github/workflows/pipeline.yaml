@@ -31,3 +31,36 @@ jobs:
           git clone --depth=1 https://github.com/stefanprodan/podinfo.git ./_podinfo
           cd _podinfo
           go test ./...
+
+    #  ---------- Build (multi-arch) ----------
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Define bake file (docker-bake.hcl)
+        run: |
+          cat > docker-bake.hcl <<'EOF'
+          group "default" {
+            targets = ["podinfo-lambda"]
+          }
+          target "podinfo-lambda" {
+            context = "lambda"
+            dockerfile = "dockerfile/podinfo/Dockerfile"
+            platforms = ["linux/amd64","linux/arm64"]
+            # Niente push: esportiamo un'OCI image tar
+            # (buildx supporta multi-arch solo con export o push; --load è solo single-arch)
+            output = ["type=oci,dest=podinfo-lambda-${{ github.sha }}.tar"]
+          }
+          EOF
+
+      - name: Build (multi-arch) to OCI tar
+        run: |
+          docker buildx bake --file docker-bake.hcl
+
+      - name: Upload image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: podinfo-lambda-oci-${{ github.sha }}
+          path: podinfo-lambda-${{ github.sha }}.tar
