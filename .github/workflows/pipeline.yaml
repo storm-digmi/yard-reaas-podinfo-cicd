@@ -89,7 +89,42 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
           role-session-name: podinfo-ci
 
-      # ---- Login a ECR ----
       - name: Login to Amazon ECR
         uses: aws-actions/amazon-ecr-login@v2
+
+      # --- Push (install skopeo to use tar file) ---
+      - name: Install skopeo
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y skopeo
+
+  
+      - name: Skopeo login to ECR
+        env:
+          AWS_ACCOUNT_ID: ${{ env.AWS_ACCOUNT_ID }}
+          AWS_REGION: ${{ env.AWS_REGION }}
+        run: |
+          aws ecr get-login-password --region "$AWS_REGION" \
+            | skopeo login --username AWS --password-stdin \
+              "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+
+      - name: Push OCI tar to ECR
+        env:
+          AWS_ACCOUNT_ID: ${{ env.AWS_ACCOUNT_ID }}
+          AWS_REGION: ${{ env.AWS_REGION }}
+          ECR_REPO_NAME: ${{ env.ECR_REPO_NAME }}
+        run: |
+          TAR="podinfo-lambda-${{ github.sha }}.tar"
+          ECR_URL="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO_NAME}"
+
+          # Copia multi-arch (manifest list) dal tar al registry
+          skopeo copy --all --retry-times 3 \
+            oci-archive:${TAR} docker://${ECR_URL}:${{ github.sha }}
+
+          skopeo copy --all --retry-times 3 \
+            oci-archive:${TAR} docker://${ECR_URL}:latest
+
+
+
+      
 
