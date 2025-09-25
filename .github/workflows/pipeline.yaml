@@ -46,8 +46,8 @@ jobs:
             targets = ["podinfo-lambda"]
           }
           target "podinfo-lambda" {
-            context = "lambda"
-            dockerfile = "dockerfile/podinfo/Dockerfile"
+            context = "dockerfile/podinfo"
+            dockerfile = "Dockerfile"
             platforms = ["linux/amd64","linux/arm64"]
             # Niente push: esportiamo un'OCI image tar
             # (buildx supporta multi-arch solo con export o push; --load è solo single-arch)
