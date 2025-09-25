@@ -7,7 +7,7 @@ on:
     branches:
       - main
     paths:
-      - "dockerfile/nginx/**"
+      - "dockerfile/podinfo/**"
 
 permissions:
       id-token: write   

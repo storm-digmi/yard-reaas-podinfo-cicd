@@ -11,3 +11,5 @@ COPY --from=aws-lambda-adapter /lambda-adapter /opt/extensions/lambda-adapter
 ENV PORT=9898
 ENV AWS_LWA_PORT=9898
 ENV AWS_LWA_READINESS_CHECK_PATH=/healthz
+
+# Comment to test
