@@ -67,3 +67,29 @@ jobs:
         with:
           name: podinfo-lambda-oci-${{ github.sha }}
           path: podinfo-lambda-${{ github.sha }}.tar
+      
+      # ----------Login to ECR (OIDC)) ----------
+      - name: Read OIDC role from repo vars
+        shell: bash
+        env:
+          AUTOMATION_PROD: ${{ vars.AUTOMATION_PROD }}
+        run: |
+          export AWS_ACCOUNT_ID=$(echo "$AUTOMATION_PROD" | jq -r '.AWS_ACCOUNT_ID')
+          export AWS_IAM_ROLE=$(echo "$AUTOMATION_PROD" | jq -r '.AWS_IAM_ROLE')
+          echo "AWS_ACCOUNT_ID=$AWS_ACCOUNT_ID" >> $GITHUB_ENV
+          echo "AWS_IAM_ROLE=$AWS_IAM_ROLE"     >> $GITHUB_ENV
+          echo "AWS_REGION=eu-central-1"        >> $GITHUB_ENV   
+          echo "ECR_REPO_NAME=orbital-freight-podinfo-repo" >> $GITHUB_ENV
+
+      
+      - name: Configure AWS Credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/${{ env.AWS_IAM_ROLE }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: podinfo-ci
+
+      # ---- Login a ECR ----
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
