@@ -118,10 +118,10 @@ jobs:
           ECR_URL="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO_NAME}"
 
           # Copia multi-arch (manifest list) dal tar al registry
-          skopeo copy --all --retry-times 3 --format docker \
+          skopeo copy --all --retry-times 3 --format v2s2 \
             oci-archive:${TAR} docker://${ECR_URL}:${{ github.sha }}
 
-          skopeo copy --all --retry-times 3 --format docker \
+          skopeo copy --all --retry-times 3 --format v2s2 \
             oci-archive:${TAR} docker://${ECR_URL}:latest
       # ---------- Resolve amd64 digest from the multi-arch tag ----------
       - name: Ensure jq present
