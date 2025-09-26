@@ -137,8 +137,8 @@ jobs:
 
           echo "LAMBDA_FUNCTION_NAME=$LAMBDA_FUNCTION_NAME" >> $GITHUB_ENV
           echo "LAMBDA_ALIAS=$LAMBDA_ALIAS"     >> $GITHUB_ENV
-          echo "CD_APP_NAME=CD_APP_NAME"        >> $GITHUB_ENV   
-          echo "CD_DG_NAME=CD_DG_NAME" >> $GITHUB_ENV
+          echo "CD_APP_NAME=$CD_APP_NAME"        >> $GITHUB_ENV   
+          echo "CD_DG_NAME=$CD_DG_NAME" >> $GITHUB_ENV
 
       - name: Update Lambda code (publish new version)
         id: lambda-update
