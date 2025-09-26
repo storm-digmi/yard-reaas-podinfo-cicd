@@ -264,13 +264,29 @@ jobs:
           echo "DEPLOY_ID=$DEPLOY_ID" >> $GITHUB_ENV
           echo "Deployment: $DEPLOY_ID"
 
-      # (opzionale ma consigliato) Attendi il completamento del canary + bake time
+      # Waiting canary + bake time
       - name: Wait for CodeDeploy to complete
         shell: bash
         run: |
           set -e
           aws deploy wait deployment-successful --deployment-id "$DEPLOY_ID"
           echo "Deployment successful."
+
+      # ---------- Verify ----------
+      - name: Verify deployment (health check)
+        shell: bash
+        env:
+          API_URL: ${{ vars.API_URL }}
+        run: |
+          set -euo pipefail
+          echo "Checking health at $API_URL/healthz ..."
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$API_URL/healthz" || true)
+          if [ "$STATUS" != "200" ]; then
+            echo "::error::Health check failed, got HTTP $STATUS"
+            exit 1
+          fi
+          echo "Health check OK"
+
 
 
       
