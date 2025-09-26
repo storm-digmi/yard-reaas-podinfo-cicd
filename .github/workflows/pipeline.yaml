@@ -44,16 +44,23 @@ jobs:
 
       - name: Define bake file (docker-bake.hcl)
         run: |
-          docker buildx build \
-          --platform=linux/amd64,linux/arm64 \
-          --provenance=false \
-          -o type=oci,dest=podinfo-lambda-${{ github.sha }}.tar \
-          -f dockerfile/podinfo/Dockerfile \
-          dockerfile/podinfo
+          cat > docker-bake.hcl <<'EOF'
+          group "default" {
+            targets = ["podinfo-lambda"]
+          }
+          target "podinfo-lambda" {
+            context = "dockerfile/podinfo"
+            dockerfile = "Dockerfile"
+            platforms = ["linux/amd64","linux/arm64"]
+            # Niente push: esportiamo un'OCI image tar
+            # (buildx supporta multi-arch solo con export o push; --load è solo single-arch)
+            output = ["type=oci,dest=podinfo-lambda-${{ github.sha }}.tar"]
+          }
+          EOF
 
       - name: Build (multi-arch) to OCI tar
         run: |
-          docker buildx bake --file docker-bake.hcl --set podinfo-lambda.provenance=false
+          docker buildx bake --file docker-bake.hcl
 
       - name: Upload image artifact
         uses: actions/upload-artifact@v4
@@ -111,36 +118,11 @@ jobs:
           ECR_URL="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO_NAME}"
 
           # Copia multi-arch (manifest list) dal tar al registry
-          skopeo copy --all --retry-times 3 --format v2s2 \
+          skopeo copy --all --retry-times 3 \
             oci-archive:${TAR} docker://${ECR_URL}:${{ github.sha }}
 
-          skopeo copy --all --retry-times 3 --format v2s2 \
+          skopeo copy --all --retry-times 3 \
             oci-archive:${TAR} docker://${ECR_URL}:latest
-      # ---------- Resolve amd64 digest from the multi-arch tag ----------
-      - name: Ensure jq present
-        run: |
-          command -v jq >/dev/null 2>&1 || { sudo apt-get update -y && sudo apt-get install -y jq; }
-
-      - name: Resolve amd64 digest from multi-arch tag
-        shell: bash
-        env:
-          ECR_REPO_NAME: ${{ env.ECR_REPO_NAME }}
-        run: |
-          set -euo pipefail
-          INDEX_JSON=$(aws ecr batch-get-image \
-            --repository-name "${ECR_REPO_NAME}" \
-            --image-id imageTag="${GITHUB_SHA}" \
-            --accepted-media-types \
-              'application/vnd.docker.distribution.manifest.list.v2+json,application/vnd.oci.image.index.v1+json' \
-            --query 'images[0].imageManifest' --output text)
-
-          AMD64_DIGEST=$(echo "$INDEX_JSON" \
-            | jq -r '.manifests[] | select(.platform.architecture=="amd64") | .digest')
-
-          test -n "$AMD64_DIGEST" || { echo "::error::No amd64 digest found in manifest list"; exit 1; }
-          echo "AMD64_DIGEST=$AMD64_DIGEST" >> $GITHUB_ENV
-          echo "Resolved amd64 digest: $AMD64_DIGEST"
-
     
       # ---------- Deploy ----------
       - name: Resolve Lambda/CD env
@@ -166,20 +148,16 @@ jobs:
           AWS_ACCOUNT_ID: ${{ env.AWS_ACCOUNT_ID }}
           ECR_REPO_NAME: ${{ env.ECR_REPO_NAME }}
           AWS_REGION: ${{ env.AWS_REGION }}
-          AMD64_DIGEST: ${{ env.AMD64_DIGEST }}
         run: |
-          set -euo pipefail
+          set -e
           ECR_URL="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO_NAME}"
-          IMAGE_URI="${ECR_URL}@${AMD64_DIGEST}"
-          echo "Updating ${LAMBDA_FUNCTION_NAME} with image ${IMAGE_URI}"
           NEW_VERSION=$(aws lambda update-function-code \
             --function-name "${LAMBDA_FUNCTION_NAME}" \
-            --image-uri "${IMAGE_URI}" \
+            --image-uri "${ECR_URL}:${{ github.sha }}" \
             --publish \
             --query 'Version' --output text)
           echo "NEW_VERSION=$NEW_VERSION" >> $GITHUB_ENV
           echo "New Lambda version: $NEW_VERSION"
-
 
       - name: Read current alias version
         id: lambda-alias
