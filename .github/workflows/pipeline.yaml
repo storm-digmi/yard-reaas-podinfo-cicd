@@ -68,7 +68,7 @@ jobs:
           name: podinfo-lambda-oci-${{ github.sha }}
           path: podinfo-lambda-${{ github.sha }}.tar
       
-      # ----------Login to ECR (OIDC)) ----------
+      # ---------- Login to ECR (OIDC)) ----------
       - name: Read OIDC role from repo vars
         shell: bash
         env:
@@ -92,7 +92,7 @@ jobs:
       - name: Login to Amazon ECR
         uses: aws-actions/amazon-ecr-login@v2
 
-      # --- Push (install skopeo to use tar file) ---
+      # ---------- Push (install skopeo to use tar file) ----------
       - name: Install skopeo
         run: |
           sudo apt-get update -y
@@ -123,7 +123,86 @@ jobs:
 
           skopeo copy --all --retry-times 3 \
             oci-archive:${TAR} docker://${ECR_URL}:latest
+    
+      # ---------- Deploy ----------
+      - name: Update Lambda code (publish new version)
+        id: lambda-update
+        shell: bash
+        env:
+          LAMBDA_FUNCTION_NAME: ${{ env.LAMBDA_FUNCTION_NAME }}
+          AWS_ACCOUNT_ID: ${{ env.AWS_ACCOUNT_ID }}
+          AWS_REGION: ${{ env.AWS_REGION }}
+          ECR_REPO_NAME: ${{ env.ECR_REPO_NAME }}
+        run: |
+          set -e
+          ECR_URL="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO_NAME}"
+          NEW_VERSION=$(aws lambda update-function-code \
+            --function-name "${LAMBDA_FUNCTION_NAME}" \
+            --image-uri "${ECR_URL}:${{ github.sha }}" \
+            --publish \
+            --query 'Version' --output text)
+          echo "NEW_VERSION=$NEW_VERSION" >> $GITHUB_ENV
+          echo "New Lambda version: $NEW_VERSION"
 
+      - name: Read current alias version
+        id: lambda-alias
+        shell: bash
+        env:
+          LAMBDA_FUNCTION_NAME: ${{ env.LAMBDA_FUNCTION_NAME }}
+          LAMBDA_ALIAS: ${{ env.LAMBDA_ALIAS }}
+        run: |
+          set -e
+          CURR_VERSION=$(aws lambda get-alias \
+            --function-name "${LAMBDA_FUNCTION_NAME}" \
+            --name "${LAMBDA_ALIAS}" \
+            --query 'FunctionVersion' --output text)
+          echo "CURR_VERSION=$CURR_VERSION" >> $GITHUB_ENV
+          echo "Current alias version: $CURR_VERSION"
+
+      - name: Create CodeDeploy deployment
+        id: create-deploy
+        shell: bash
+        env:
+          CD_APP_NAME: ${{ env.CD_APP_NAME }}
+          CD_DG_NAME: ${{ env.CD_DG_NAME }}
+          LAMBDA_FUNCTION_NAME: ${{ env.LAMBDA_FUNCTION_NAME }}
+          LAMBDA_ALIAS: ${{ env.LAMBDA_ALIAS }}
+          CURR_VERSION: ${{ env.CURR_VERSION }}
+          NEW_VERSION: ${{ env.NEW_VERSION }}
+        run: |
+          set -e
+          cat > appspec.yaml << 'YAML'
+          version: 0.0
+          Resources:
+            - myLambda:
+                Type: AWS::Lambda::Function
+                Properties:
+                  Name: ${LAMBDA_FUNCTION_NAME}
+                  Alias: ${LAMBDA_ALIAS}
+                  CurrentVersion: ${CURR_VERSION}
+                  TargetVersion: ${NEW_VERSION}
+          YAML
+          sed -i "s|\${LAMBDA_FUNCTION_NAME}|${LAMBDA_FUNCTION_NAME}|g" appspec.yaml
+          sed -i "s|\${LAMBDA_ALIAS}|${LAMBDA_ALIAS}|g" appspec.yaml
+          sed -i "s|\${CURR_VERSION}|${CURR_VERSION}|g" appspec.yaml
+          sed -i "s|\${NEW_VERSION}|${NEW_VERSION}|g" appspec.yaml
+
+          DEPLOY_ID=$(aws deploy create-deployment \
+            --application-name "${CD_APP_NAME}" \
+            --deployment-group-name "${CD_DG_NAME}" \
+            --revision "appSpecContent={content='$(awk '{printf "%s\\n", $0}' appspec.yaml)'}" \
+            --description "podinfo ${{ github.sha }}" \
+            --query 'deploymentId' --output text)
+          echo "DEPLOY_ID=$DEPLOY_ID" >> $GITHUB_ENV
+          echo "Deployment: $DEPLOY_ID"
+
+      # (opzionale ma consigliato) Attendi il completamento del canary + bake time
+      - name: Wait for CodeDeploy to complete
+        shell: bash
+        run: |
+          set -e
+          aws deploy wait deployment-successful --deployment-id "$DEPLOY_ID"
+          echo "Deployment successful."
 
 
       
