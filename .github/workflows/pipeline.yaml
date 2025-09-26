@@ -44,20 +44,12 @@ jobs:
 
       - name: Define bake file (docker-bake.hcl)
         run: |
-          cat > docker-bake.hcl <<'EOF'
-          group "default" {
-            targets = ["podinfo-lambda"]
-          }
-          target "podinfo-lambda" {
-            context = "dockerfile/podinfo"
-            dockerfile = "Dockerfile"
-            platforms = ["linux/amd64","linux/arm64"]
-            provenance = false
-            # Niente push: esportiamo un'OCI image tar
-            # (buildx supporta multi-arch solo con export o push; --load è solo single-arch)
-            output = ["type=oci,dest=podinfo-lambda-${{ github.sha }}.tar"]
-          }
-          EOF
+          docker buildx build \
+          --platform=linux/amd64,linux/arm64 \
+          --provenance=false \
+          -o type=oci,dest=podinfo-lambda-${{ github.sha }}.tar \
+          -f dockerfile/podinfo/Dockerfile \
+          dockerfile/podinfo
 
       - name: Build (multi-arch) to OCI tar
         run: |
