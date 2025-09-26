@@ -123,6 +123,49 @@ jobs:
 
           skopeo copy --all --retry-times 3 \
             oci-archive:${TAR} docker://${ECR_URL}:latest
+          
+      # Estrai il digest dell'INDEX multi-arch dal tag :sha
+      - name: Get manifest-list (index) JSON
+        id: get-index
+        shell: bash
+        env:
+          AWS_ACCOUNT_ID: ${{ env.AWS_ACCOUNT_ID }}
+          AWS_REGION: ${{ env.AWS_REGION }}
+          ECR_REPO_NAME: ${{ env.ECR_REPO_NAME }}
+        run: |
+          set -euo pipefail
+          ECR_URL="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO_NAME}"
+          # Prendo il manifest dell'INDEX (Docker v2 list o OCI index)
+          INDEX=$(aws ecr batch-get-image \
+            --repository-name "${ECR_REPO_NAME}" \
+            --image-id imageTag="${GITHUB_SHA}" \
+            --accepted-media-types 'application/vnd.docker.distribution.manifest.list.v2+json,application/vnd.oci.image.index.v1+json' \
+            --query 'images[0].imageManifest' --output text)
+          echo "$INDEX" > index.json
+          cat index.json | jq -r '.manifests[] | {mediaType, platform, digest}'
+
+          # Trova il digest del manifest per amd64
+          AMD64_DIGEST=$(jq -r '.manifests[] | select(.platform.architecture=="amd64") | .digest' index.json)
+          test -n "$AMD64_DIGEST" || { echo "::error::No amd64 digest found in manifest list"; exit 1; }
+          echo "AMD64_DIGEST=$AMD64_DIGEST" >> $GITHUB_ENV
+          echo "Resolved amd64 digest: $AMD64_DIGEST"
+
+      # (Facoltativo ma consigliato) Fai emit del manifest figlio in formato Docker v2
+      - name: Get amd64 child manifest (docker v2)
+        id: get-child
+        shell: bash
+        env:
+          ECR_REPO_NAME: ${{ env.ECR_REPO_NAME }}
+          AMD64_DIGEST: ${{ env.AMD64_DIGEST }}
+        run: |
+          set -euo pipefail
+          CHILD=$(aws ecr batch-get-image \
+            --repository-name "${ECR_REPO_NAME}" \
+            --image-id imageDigest="${AMD64_DIGEST}" \
+            --accepted-media-types 'application/vnd.docker.distribution.manifest.v2+json,application/vnd.oci.image.manifest.v1+json' \
+            --query 'images[0].imageManifest' --output text)
+          echo "$CHILD" | jq . | sed -e 's/^/CHILD: /' || true
+
     
       # ---------- Deploy ----------
       - name: Resolve Lambda/CD env
@@ -149,11 +192,13 @@ jobs:
           ECR_REPO_NAME: ${{ env.ECR_REPO_NAME }}
           AWS_REGION: ${{ env.AWS_REGION }}
         run: |
-          set -e
+          set -euo pipefail
           ECR_URL="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO_NAME}"
+          IMAGE_URI="${ECR_URL}@${AMD64_DIGEST}"
+          echo "Updating ${LAMBDA_FUNCTION_NAME} with image ${IMAGE_URI}"
           NEW_VERSION=$(aws lambda update-function-code \
-            --function-name "${LAMBDA_FUNCTION_NAME}" \
-            --image-uri "${ECR_URL}:${{ github.sha }}" \
+            --function-name "$LAMBDA_FUNCTION_NAME" \
+            --image-uri "$IMAGE_URI" \
             --publish \
             --query 'Version' --output text)
           echo "NEW_VERSION=$NEW_VERSION" >> $GITHUB_ENV
