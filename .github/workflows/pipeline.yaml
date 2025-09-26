@@ -52,6 +52,7 @@ jobs:
             context = "dockerfile/podinfo"
             dockerfile = "Dockerfile"
             platforms = ["linux/amd64","linux/arm64"]
+            provenance = false
             # Niente push: esportiamo un'OCI image tar
             # (buildx supporta multi-arch solo con export o push; --load è solo single-arch)
             output = ["type=oci,dest=podinfo-lambda-${{ github.sha }}.tar"]
@@ -60,7 +61,7 @@ jobs:
 
       - name: Build (multi-arch) to OCI tar
         run: |
-          docker buildx bake --file docker-bake.hcl
+          docker buildx bake --file docker-bake.hcl --set podinfo-lambda.provenance=false
 
       - name: Upload image artifact
         uses: actions/upload-artifact@v4
