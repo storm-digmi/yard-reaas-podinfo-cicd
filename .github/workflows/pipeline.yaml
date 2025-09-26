@@ -125,14 +125,29 @@ jobs:
             oci-archive:${TAR} docker://${ECR_URL}:latest
     
       # ---------- Deploy ----------
+      - name: Resolve Lambda/CD env
+        shell: bash
+        env: 
+          LAMBDA: ${{ vars.LAMBDA }}
+        run:
+          export LAMBDA_FUNCTION_NAME=$(echo "$LAMBDA" | jq -r '.LAMBDA_FUNCTION_NAME')
+          export LAMBDA_ALIAS=$(echo "$LAMBDA" | jq -r '.LAMBDA_ALIAS')
+          export CD_APP_NAME=$(echo "$LAMBDA" | jq -r '.CD_APP_NAME')
+          export CD_DG_NAME=$(echo "$LAMBDA" | jq -r '.CD_DG_NAME')
+
+          echo "LAMBDA_FUNCTION_NAME=$LAMBDA_FUNCTION_NAME" >> $GITHUB_ENV
+          echo "LAMBDA_ALIAS=$LAMBDA_ALIAS"     >> $GITHUB_ENV
+          echo "CD_APP_NAME=CD_APP_NAME"        >> $GITHUB_ENV   
+          echo "CD_DG_NAME=CD_DG_NAME" >> $GITHUB_ENV
+
       - name: Update Lambda code (publish new version)
         id: lambda-update
         shell: bash
         env:
           LAMBDA_FUNCTION_NAME: ${{ env.LAMBDA_FUNCTION_NAME }}
           AWS_ACCOUNT_ID: ${{ env.AWS_ACCOUNT_ID }}
-          AWS_REGION: ${{ env.AWS_REGION }}
           ECR_REPO_NAME: ${{ env.ECR_REPO_NAME }}
+          AWS_REGION: ${{ env.AWS_REGION }}
         run: |
           set -e
           ECR_URL="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO_NAME}"
