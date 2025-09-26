@@ -247,12 +247,20 @@ jobs:
           sed -i "s|\${CURR_VERSION}|${CURR_VERSION}|g" appspec.yaml
           sed -i "s|\${NEW_VERSION}|${NEW_VERSION}|g" appspec.yaml
 
-          DEPLOY_ID=$(aws deploy create-deployment \
+          # Leggi il file YAML e trasformalo in stringa JSON correttamente quotata
+          CONTENT=$(jq -Rs . appspec.yaml)
+
+          # Monta l'input per --revision specificando revisionType=AppSpecContent
+          REVISION_JSON=$(printf '{"revisionType":"AppSpecContent","appSpecContent":{"content":%s}}' "$CONTENT")
+
+          # Crea il deployment
+          DEPLOY_JSON=$(aws deploy create-deployment \
             --application-name "${CD_APP_NAME}" \
             --deployment-group-name "${CD_DG_NAME}" \
-            --revision "appSpecContent={content='$(awk '{printf "%s\\n", $0}' appspec.yaml)'}" \
-            --description "podinfo ${{ github.sha }}" \
-            --query 'deploymentId' --output text)
+            --revision "${REVISION_JSON}" \
+            --description "podinfo ${GITHUB_SHA}")
+
+          DEPLOY_ID=$(echo "$DEPLOY_JSON" | jq -r .deploymentId)
           echo "DEPLOY_ID=$DEPLOY_ID" >> $GITHUB_ENV
           echo "Deployment: $DEPLOY_ID"
 
