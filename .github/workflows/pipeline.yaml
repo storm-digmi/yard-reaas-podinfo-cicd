@@ -129,7 +129,7 @@ jobs:
         shell: bash
         env: 
           LAMBDA: ${{ vars.LAMBDA }}
-        run:
+        run: |
           export LAMBDA_FUNCTION_NAME=$(echo "$LAMBDA" | jq -r '.LAMBDA_FUNCTION_NAME')
           export LAMBDA_ALIAS=$(echo "$LAMBDA" | jq -r '.LAMBDA_ALIAS')
           export CD_APP_NAME=$(echo "$LAMBDA" | jq -r '.CD_APP_NAME')
