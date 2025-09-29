@@ -302,7 +302,7 @@ jobs:
             --query 'Environment.Variables.SUPER_SECRET_TOKEN_SECRET_ARN' \
             --output text)
 
-            --echo "$SECRET_ARN"
+          echo "$SECRET_ARN"
 
           # Valore del secret
           SECRET_VALUE=$(aws secretsmanager get-secret-value \
