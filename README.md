@@ -5,6 +5,12 @@ This repository contains the **GitHub Actions pipeline** that builds, pushes, an
 
 ---
 
+## Architecture Diagram
+
+![Architecture Diagram](docs/yard-reaas.drawio.png)
+
+---
+
 ## Tools
 - **GitHub Actions** for CI/CD.  
 - **Docker Buildx** + **Skopeo** for building and pushing multi-arch container images.  
