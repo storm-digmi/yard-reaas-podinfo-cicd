@@ -287,6 +287,38 @@ jobs:
           fi
           echo "Health check OK"
 
+      # ---------- Additional Step: Print Masked Secret Value ----------
+      - name: Write secret to CloudWatch logs (masking demo)
+        shell: bash
+        env:
+          LAMBDA_FUNCTION_NAME: ${{ env.LAMBDA_FUNCTION_NAME }}
+          AWS_REGION: ${{ env.AWS_REGION }}
+        run: |
+          set -euo pipefail
+
+          # ARN del secret dalle env della Lambda
+          SECRET_ARN=$(aws lambda get-function-configuration \
+            --function-name "$LAMBDA_FUNCTION_NAME" \
+            --query 'Environment.Variables.SUPER_SECRET_TOKEN_SECRET_ARN' \
+            --output text)
+
+          # Valore del secret
+          SECRET_VALUE=$(aws secretsmanager get-secret-value \
+            --secret-id "$SECRET_ARN" \
+            --query 'SecretString' --output text)
+
+          # Scrivi un messaggio nel log group della Lambda
+          LOG_GROUP="/aws/lambda/${LAMBDA_FUNCTION_NAME}"
+          LOG_STREAM="masking-demo-${GITHUB_SHA}"
+          aws logs create-log-stream --log-group-name "$LOG_GROUP" --log-stream-name "$LOG_STREAM" || true
+
+          TS_MS=$(( $(date +%s) * 1000 ))
+          aws logs put-log-events \
+            --log-group-name "$LOG_GROUP" \
+            --log-stream-name "$LOG_STREAM" \
+            --log-events timestamp=$TS_MS,message="DEMO: SUPER_SECRET_TOKEN=${SECRET_VALUE}"
+
+
 
 
       
